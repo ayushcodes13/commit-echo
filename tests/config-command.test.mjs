@@ -603,6 +603,49 @@ test('config set normalizes valid base URLs before saving', async () => {
   });
 });
 
+test('config set preserves templatePath when updating another key', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+
+    await runConfigWithArgs(homeDir, ['set', 'model', 'gpt-4.1-mini']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.model, 'gpt-4.1-mini');
+    assert.equal(config.templatePath, '/tmp/commit-echo-template.md');
+  });
+});
+
+test('config set updates templatePath when the file exists', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+    const templatePath = join(homeDir, 'prompt-template.md');
+    writeFileSync(templatePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['set', 'templatePath', templatePath]);
+    const config = readConfig(homeDir);
+
+    assert.match(stdout + stderr, /Updated templatePath/);
+    assert.equal(config.templatePath, templatePath);
+  });
+});
+
+test('config set rejects missing templatePath files', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const missingPath = join(homeDir, 'missing-template.md');
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'templatePath', missingPath]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /templatePath does not exist/);
+        assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+        return true;
+      },
+    );
+  });
+});
+
 test('config set preserves surrounding whitespace for template values', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
