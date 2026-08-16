@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -626,6 +626,39 @@ test('config set updates templatePath when the file exists', async () => {
 
     assert.match(stdout + stderr, /Updated templatePath/);
     assert.equal(config.templatePath, templatePath);
+  });
+});
+
+test('config set stores relative templatePath values as absolute paths', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+    const cliPath = join(process.cwd(), 'dist/index.js');
+    const templatePath = join(homeDir, 'relative-template.md');
+    writeFileSync(templatePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+
+    await execFileAsync(process.execPath, [cliPath, '--no-color', 'config', 'set', 'templatePath', 'relative-template.md'], {
+      cwd: homeDir,
+      env: envFor(homeDir),
+    });
+
+    const config = readConfig(homeDir);
+    assert.equal(config.templatePath, realpathSync(templatePath));
+  });
+});
+
+test('config set rejects directory templatePath values', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'templatePath', homeDir]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /templatePath is not a file/);
+        assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+        return true;
+      },
+    );
   });
 });
 
