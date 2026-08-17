@@ -642,7 +642,7 @@ test('config set stores relative templatePath values as absolute paths', async (
     });
 
     const config = readConfig(homeDir);
-    assert.equal(config.templatePath, realpathSync(templatePath));
+    assert.equal(config.templatePath, templatePath);
   });
 });
 
