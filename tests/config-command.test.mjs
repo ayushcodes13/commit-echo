@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -642,7 +642,7 @@ test('config set stores relative templatePath values as absolute paths', async (
     });
 
     const config = readConfig(homeDir);
-    assert.equal(config.templatePath, templatePath);
+    assert.equal(config.templatePath, realpathSync(templatePath));
   });
 });
 
@@ -676,6 +676,34 @@ test('config set rejects missing templatePath files', async () => {
         return true;
       },
     );
+  });
+});
+
+test('config set rejects unreadable templatePath files without changing existing config', async (t) => {
+  if (platform() === 'win32') {
+    t.skip('POSIX permission-mode unreadable file check is not portable on Windows');
+    return;
+  }
+
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const unreadablePath = join(homeDir, 'unreadable-template.md');
+    writeFileSync(unreadablePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+    chmodSync(unreadablePath, 0o000);
+
+    try {
+      await assert.rejects(
+        () => runConfigWithArgs(homeDir, ['set', 'templatePath', unreadablePath]),
+        (error) => {
+          assert.equal(error.code, 1);
+          assert.match(error.stdout + error.stderr, /templatePath is not readable/);
+          assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+          return true;
+        },
+      );
+    } finally {
+      chmodSync(unreadablePath, 0o600);
+    }
   });
 });
 
