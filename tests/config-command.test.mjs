@@ -707,6 +707,36 @@ test('config set rejects unreadable templatePath files without changing existing
   });
 });
 
+test('config set reports unreadable templatePath when parent directory is inaccessible', async (t) => {
+  if (platform() === 'win32') {
+    t.skip('POSIX permission-mode unreadable directory check is not portable on Windows');
+    return;
+  }
+
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const privateDir = join(homeDir, 'private-templates');
+    mkdirSync(privateDir);
+    const unreadablePath = join(privateDir, 'prompt-template.md');
+    writeFileSync(unreadablePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+    chmodSync(privateDir, 0o000);
+
+    try {
+      await assert.rejects(
+        () => runConfigWithArgs(homeDir, ['set', 'templatePath', unreadablePath]),
+        (error) => {
+          assert.equal(error.code, 1);
+          assert.match(error.stdout + error.stderr, /templatePath is not readable/);
+          assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+          return true;
+        },
+      );
+    } finally {
+      chmodSync(privateDir, 0o700);
+    }
+  });
+});
+
 test('config set preserves surrounding whitespace for template values', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);

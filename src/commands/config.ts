@@ -1,5 +1,5 @@
 import { intro, outro } from '@clack/prompts';
-import { accessSync, constants, existsSync, statSync } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pc from 'picocolors';
 import {
@@ -76,13 +76,13 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
     if (!rawValue) {
       return undefined as ConfigSetValueMap[K];
     }
-    if (!existsSync(rawValue)) {
-      throw new Error(`templatePath does not exist: ${rawValue}`);
-    }
     let templateStats;
     try {
       templateStats = statSync(rawValue);
     } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        throw new Error(`templatePath does not exist: ${rawValue}`);
+      }
       throw new Error(`templatePath is not readable: ${rawValue}`);
     }
     if (!templateStats.isFile()) {
